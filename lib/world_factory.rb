@@ -1,17 +1,37 @@
 # frozen_string_literal: true
 
+require "active_support/inflector"
+
 class WorldFactory
-  class BaseWorld
-    include ActiveJob::TestHelper
-
-    def self.include_path(path)
-      Dir[path].each do |file|
-        klass_name = File.basename(file).gsub(/.rb$/, '').split('_').map(&:capitalize).join
-
-        include "World::#{klass_name}".constantize
-      end
+  module FactoryModule
+    def _defines
+      @_defines ||= []
     end
 
+    def _define_groups
+      @_define_groups ||= []
+    end
+
+    def define(*args, **opts, &block)
+      _defines << [args, opts, block]
+    end
+
+    def define_group(*args, **opts, &block)
+      _define_groups << [args, opts, block]
+    end
+
+    def included(base)
+      _defines.each do |args, options, block|
+        base.define(*args, **options, &block)
+      end
+
+      _define_groups.each do |args, options, block|
+        base.define_group(*args, **options, &block)
+      end
+    end
+  end
+
+  class BaseWorld
     def self.plural_factory_names
       @plural_factory_names ||= []
     end
@@ -23,7 +43,7 @@ class WorldFactory
       inflected_types = types.map do |type_sym|
         [type_sym, ActiveSupport::Inflector.pluralize(type_sym.to_s).to_sym]
       end
-      plural_names = inflected_types.map(&:second)
+      plural_names = inflected_types.map { |t| t[1] }
 
       inflected_types.each do |type_sym, plural|
         plural_factory_names << plural
@@ -41,7 +61,7 @@ class WorldFactory
 
         define_method "_#{constructor_name}", &main_constructor
         class_eval <<-RUBY, __FILE__, __LINE__ + 1
-          def #{constructor_name}(opts = #{OPTS})
+          def #{constructor_name}(opts = {})
             _#{constructor_name}(opts).tap do |model|
               #{plural_names}.each do |p|
                 arr = instance_variable_get('@' + p.to_s)
@@ -81,7 +101,7 @@ class WorldFactory
       @define_group_context = nil
     end
 
-    def initialize(options = OPTS)
+    def initialize(options = {})
       self.class.plural_factory_names.uniq.each do |n|
         instance_variable_set("@#{n}", options.fetch(n.to_sym, []))
       end
