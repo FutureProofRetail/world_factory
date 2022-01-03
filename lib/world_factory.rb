@@ -92,11 +92,16 @@ class WorldFactory
       def member(factory_name, &block)
         @context.define(factory_name, @group_name, &block)
       end
+
+      def define(*)
+        raise "You cannot call `define` within `define_group :#{group_name}`; instead, use `#member` on the builder block param"
+      end
     end
 
-    def self.define_group(group_name)
+    def self.define_group(group_name, &block)
       @define_group_context = DefineGroupContext.new(self, group_name)
-      yield @define_group_context
+
+      @define_group_context.instance_exec(@define_group_context, &block)
     ensure
       @define_group_context = nil
     end
